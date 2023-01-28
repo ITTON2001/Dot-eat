@@ -265,7 +265,6 @@ VEC2 GetChasePosition(CHARACTER _character, VEC2 _targetPosition)
 				routes[newPosition.y][newPosition.x].push_back(newPosition);
 			}
 		}
-
 		//19探索すべき座標のリストから先頭の座標を削除する
 		toCheckPositions.erase(toCheckPositions.begin());
 	}
@@ -296,7 +295,6 @@ VEC2 GetChasePosition(CHARACTER _character, VEC2 _targetPosition)
 //迷路を描画する関数を宣言する
 void DrawMaze()
 {
-
 	//画面バッファーを宣言する
 	char screen[MAZE_HEIGHT][MAZE_WIDTH + 1];
 
