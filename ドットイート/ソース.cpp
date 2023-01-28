@@ -20,6 +20,8 @@ enum
 	CHARACTER_PLAYER,	//プレイヤー
 	CHARACTER_RANDOM,	//気まぐれモンスター
 	CHARACTER_CHASE,	//追いかけモンスター
+	CHARACTER_AMBUSH,	//先回りモンスター
+	CHARACTER_SIEGE,	//挟み撃ちモンスター
 	CHARACTER_MAX		//キャラクターの数	
 };
 
@@ -97,6 +99,20 @@ CHARACTER characters[CHARACTER_MAX] =
 		{17,1},	//const VEC2 defaultPosition
 		{}, //VEC2	lastPosition
 	},
+
+	//CHARACTER_AMBUSH 先回りモンスター
+	{
+		{},	//VEC2 position
+		{1,17},	//const VEC2 defaultPosition
+		{}, //VEC2	lastPosition
+	},
+
+	//CHARACTER_SIEGE 挟み撃ちモンスター
+	{
+		{},	//VEC2 position
+		{17,17},	//const VEC2 defaultPosition
+		{}, //VEC2	lastPosition
+	},
 };
 
 //方向のベクトルの配列を宣言する
@@ -120,6 +136,17 @@ VEC2 Vec2Add(VEC2 _v0, VEC2 _v1)
 	};
 }
 
+//ベクトルを減算する関数を宣言する
+VEC2 Vec2Subtract(VEC2 _v0, VEC2 _v1)
+{
+	//減算したベクトルを返す
+	return
+	{
+		_v0.x - _v1.x,
+		_v0.y - _v1.y
+	};
+}
+
 // 上下左右にループした座標を取得する関数を宣言する
 VEC2 GetLoopPosition(VEC2 _position)
 {
@@ -138,7 +165,7 @@ bool Vec2Equal(VEC2 _v0, VEC2 _v1)
 	return (_v0.x == _v1.x) && (_v0.y == _v1.y);
 }
 
-//ランダムな移動先を取得する関数を宣言する
+//ランダムな移動先を取得する関数を宣言する(ランダムモンスターの処理)
 VEC2 GetRandomPosition(CHARACTER _character)
 {
 	//移動先の候補のリストを宣言する
@@ -164,6 +191,106 @@ VEC2 GetRandomPosition(CHARACTER _character)
 
 	//移動先の候補の中からランダムで座標を返す
 	return positions[rand() % positions.size()];
+}
+
+//目標地点への最短経路の最初の座標を取得する関数を宣言する(追いかけるモンスターの処理)
+VEC2 GetChasePosition(CHARACTER _character, VEC2 _targetPosition)
+{
+	//1経路を探索すべき座標のリストを宣言する
+	std::vector<VEC2> toCheckPositions;
+
+	//2探索をするキャラクター自身の座標を探索すべき座標のリストに追加する
+	toCheckPositions.push_back(_character.position);
+
+	//3探索開始地点から各マスへの距離を保持する配列を宣言する
+	int distances[MAZE_HEIGHT][MAZE_WIDTH];
+
+	//4迷路のすべての行を反復する
+	for (int y = 0; y < MAZE_HEIGHT; y++)
+	{
+		//5迷路のすべての列を反復する
+		for (int x = 0; x < MAZE_WIDTH; x++)
+		{
+			//6対象のマスへの距離を未設定として初期化する
+			distances[y][x] = -1;
+		}
+	}
+
+	//7探索するキャラクター自身の座標への距離は0にする
+	distances[_character.position.y][_character.position.x] = 0;
+
+	//8探索開始地点から各マスへの経路を保持する配列を宣言する
+	std::vector<VEC2> routes[MAZE_HEIGHT][MAZE_WIDTH];
+
+	//9探索すべき座標のリストが空になるまで反復する
+	while (!toCheckPositions.empty())
+	{
+		//10すべての方向を反復する
+		for (int i = 0; i < DIRECTION_MAX; i++)
+		{
+			//11探索中の座標に隣接する各方向の座標を取得する
+			VEC2 newPosition = Vec2Add(toCheckPositions.front(), directions[i]);
+
+			//12対象の座標を上下左右にループさせた座標に変換する
+			newPosition = GetLoopPosition(newPosition);
+
+			//13対象の座標への距離を宣言する
+			int newDistance =
+				distances[toCheckPositions.front().y][toCheckPositions.front().x] + 1;
+
+			//14対象の座標を探索すべきかどか判定する
+			if (
+				(
+					//未設定である
+					(distances[newPosition.y][newPosition.x] < 0)
+
+					//もしくは最短距離である場合
+					|| (newDistance < distances[newPosition.y][newPosition.x])
+					)
+					//かつ壁ではない
+					&& (maze[newPosition.y][newPosition.x] != '#')
+				)
+			{
+				//15対象の座標への距離を更新する
+				distances[newPosition.y][newPosition.x] = newDistance;
+
+				//16対象の座標を探索すべき座標のリストへ追加する
+				toCheckPositions.push_back(newPosition);
+
+				//17対象の座標への経路を、1つ前の座標の経路で初期化する
+				routes[newPosition.y][newPosition.x] =
+					routes[toCheckPositions.front().y][toCheckPositions.front().x];
+
+				//18対象の座標への経路に、対象の座標を追加する
+				routes[newPosition.y][newPosition.x].push_back(newPosition);
+			}
+		}
+
+		//19探索すべき座標のリストから先頭の座標を削除する
+		toCheckPositions.erase(toCheckPositions.begin());
+	}
+
+	
+
+	//20目標地点への経路があるかどうかを判定する
+	if (
+		//経路がある
+		(!routes[_targetPosition.y][_targetPosition.x].empty())
+
+		//かつ前回の座標と違う座標であれば
+		&& (!Vec2Equal(
+			routes[_targetPosition.y][_targetPosition.x].front(),_character.lastPosition))
+		)
+	{
+		//21目標地点への経路の1つ目の座標を返す
+		return routes[_targetPosition.y][_targetPosition.x].front();
+	}
+	//22目標地点への経路が無ければ
+	else
+	{
+		//23ランダムな座標を返す
+		return GetRandomPosition(_character);
+	}
 }
 
 //迷路を描画する関数を宣言する
@@ -200,12 +327,89 @@ void DrawMaze()
 			case CHARACTER_PLAYER:	printf("○");	break;	//プレイヤー
 			case CHARACTER_RANDOM:	printf("☆");	break;	//気まぐれモンスター
 			case CHARACTER_CHASE:	printf("凸");	break;	//追いかけモンスター
+			case CHARACTER_AMBUSH:	printf("◇");	break;	//先回りモンスター
+			case CHARACTER_SIEGE:	printf("凹");	break;	//挟み撃ちモンスター
 			}
 		}
 
 		//1行描画する改行する
 		printf("\n");
 	}
+}
+
+//ゲームオーバーの関数を宣言する
+bool IsGameOver()
+{
+	//すべてのモンスターを反復する
+	for (int i = CHARACTER_PLAYER + 1; i < CHARACTER_MAX; i++)
+	{
+		//対象のモンスターとプレイヤーの座標が同じかどうかを判定する
+		if (Vec2Equal(
+			characters[i].position,		//対象のモンスターの座標
+			characters[CHARACTER_PLAYER].position))		//プレイヤーの座標
+		{
+			//画面をクリアする
+			system("cls");
+
+			//迷路の高さの半分だけ反復する
+			for (int j = 0; j < MAZE_HEIGHT / 2; j++)
+			{
+				//改行する
+				printf("\n");
+			}
+
+			//ゲームオーバーのメッセージを表示する
+			printf("　　　　　ＧＡＭＥ　ＯＶＥＲ");
+
+			//キーボード入力を待つ
+			_getch();
+
+			//ゲームオーバーになったという結果を返す
+			return true;
+		}
+	}
+
+	//ゲームオーバーにならなかったという結果を返す
+	return false;
+}
+
+//エンディングの関数を処理する
+bool IsComplete()
+{
+	//迷路のすべての行を反復する
+	for (int y = 0; y < MAZE_HEIGHT; y++)
+	{
+		//迷路のすべての列を反復する
+		for (int x = 0; x < MAZE_WIDTH; x++)
+		{
+			//対象のマスがドットかどうか判定する
+			if (maze[y][x] == 'o')
+			{
+				//クリアではないと結果を返す
+				return false;
+			}
+
+		}
+	}
+
+	//画面をクリアする
+	system("cls");
+
+	//迷路の高さの半分だけを反復する
+	for (int i = 0; i < MAZE_HEIGHT / 2; i++)
+	{
+		//改行する
+		printf("\n");
+	}
+
+	//エンディングのメッセージを表示する
+	printf("　　ＣＯＮＧＲＡＴＵＬＡＴＩＯＮＳ！");
+
+	//キーボード入力を待つ
+	_getch();
+
+	//クリアしたという結果を返す
+	return true;
 }
 
 //ゲームを初期化する関数を宣言する
@@ -229,6 +433,8 @@ void Init()
 
 //プログラムの実行開始点を宣言する
 int main() {
+	start://ゲームの開始ラベル
+		;//空文
 	//ゲームを初期化する関数を呼び出す
 	Init();
 	//迷路を描画する関数を宣言する
@@ -241,6 +447,18 @@ int main() {
 	{
 		//現在の時刻を宣言する
 		time_t newClock = clock();
+
+		//ゲームオーバーになったかどうか判定する
+		if (IsGameOver())
+		{
+			goto start;//ゲームの開始ラベルにジャンプする
+		}
+
+		//クリアしたかどうか判定する
+		if (IsComplete())
+		{
+			goto start;//ゲームの開始ラベルにジャンプする
+		}
 
 		//キーボード入力があったかどうか判定する
 		if (_kbhit())
@@ -262,20 +480,26 @@ int main() {
 			//移動先が壁でないかどうか判定する
 			if (maze[newPosition.y][newPosition.x] != '#')
 			{
+				//プレイヤーの前回の座標を現在の座標で更新する
+				characters[CHARACTER_PLAYER].lastPosition =
+					characters[CHARACTER_PLAYER].position;
+
 				//プレイヤーの座標を更新する
 				characters[CHARACTER_PLAYER].position = newPosition;
 
 				//プレイヤーの座標にドットがあるかどうかを判定する[
-				if (maze[characters[CHARACTER_PLAYER].position.y][characters[CHARACTER_PLAYER].position.x] == 'o')
+				if (maze[characters[CHARACTER_PLAYER].position.y]
+					[characters[CHARACTER_PLAYER].position.x] == 'o')
 				{
 					//プレイヤーの座標のドットを消す
-					maze[characters[CHARACTER_PLAYER].position.y][characters[CHARACTER_PLAYER].position.x] == ' ';
+					maze[characters[CHARACTER_PLAYER].position.y]
+						[characters[CHARACTER_PLAYER].position.x] = ' ';
 				}
 			}
-			
+
 			//迷路を再描画する
 			DrawMaze();
-		}	
+		}
 
 		//前回の更新から待機時間が通過したかどうか判定する
 		if (newClock > lastClock + INTERVAl)
@@ -292,10 +516,64 @@ int main() {
 				//モンスターの種類によって分岐する
 				switch (i)
 				{
-				//気まぐれモンスター
+					//気まぐれモンスター
 				case CHARACTER_RANDOM:
 					//ランダムな移動先の座標を設定する
 					newPosition = GetRandomPosition(characters[i]);
+
+					break;
+					//追いかけモンスター
+				case CHARACTER_CHASE:
+					//プレイヤーを追いかける座標を設定する
+					newPosition =
+						GetChasePosition(characters[i], characters[CHARACTER_PLAYER].position);
+
+					break;
+					//先回りモンスター
+				case CHARACTER_AMBUSH:
+					//プレイヤーの向きベクトルを宣言する
+					VEC2 playerDirection = Vec2Subtract(
+						characters[CHARACTER_PLAYER].position,
+						characters[CHARACTER_PLAYER].lastPosition);
+
+					//目標地点を宣言する
+					VEC2 targetPosition = characters[CHARACTER_PLAYER].position;
+
+					//3回反復する
+					for (int j = 0; j < 3; j++)
+					{
+						//目標地点にプレイヤーの向きベクトルを加算する
+						targetPosition = Vec2Add(targetPosition, playerDirection);
+					}
+					//目標地点を上下左右にループさせた座標に変換する
+					targetPosition = GetLoopPosition(targetPosition);
+
+					//目標地点を目指す座標を設定する
+					newPosition = GetChasePosition(characters[i], targetPosition);
+
+					break;
+					//挟み撃ちモンスター
+				case CHARACTER_SIEGE:
+					//追いかけモンスターからプレイヤーへのベクトルを取得する
+					VEC2 chaseToPlayer = Vec2Subtract(
+						characters[CHARACTER_PLAYER].position, //プレイヤーの座標
+						characters[CHARACTER_CHASE].position); //追いかけモンスターの座標
+
+					//目的地を宣言する
+					VEC2 targetposition =
+						//ベクトルを加算する
+						Vec2Add(
+							//プレイヤーの座標
+							characters[CHARACTER_PLAYER].position,
+
+							//追いかけモンスターからプレイヤーへのベクトル
+							chaseToPlayer);
+
+					//目標地点を上下左右にループさせた座標に変換する
+					targetposition = GetLoopPosition(targetposition);
+
+					//目標地点を目指す座標を設定する
+					newPosition = GetChasePosition(characters[i], targetposition);
 
 					break;
 				}
